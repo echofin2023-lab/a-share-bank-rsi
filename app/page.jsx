@@ -4,7 +4,7 @@ import {
   Area, AreaChart, CartesianGrid, Legend, Line, ResponsiveContainer,
   Tooltip, XAxis, YAxis
 } from "recharts";
-import { runBankBacktest } from "../lib/client-backtest";
+import { BANKS, runBankBacktest } from "../lib/client-backtest";
 
 const money = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 });
 const pct = (v) => `${v >= 0 ? "+" : ""}${Number(v).toFixed(2)}%`;
@@ -22,7 +22,7 @@ export default function Home() {
   const [form, setForm] = useState({
     start: "2015-01-01", end: new Date().toISOString().slice(0, 10),
     period: 14, buy: 30, sell: 70, fee: 0.03, tax: 0.05, slippage: 0.05,
-    target: "all"
+    target: "600036"
   });
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -60,7 +60,7 @@ export default function Home() {
           <h1>A股银行 <em>RSI</em> 回测台</h1>
           <p className="lede">用周线观察极端情绪，把每一次买卖写进可复核的账本。</p>
         </div>
-        <div className="status"><i /> 数据源 · 东方财富实时接口</div>
+        <div className="status"><i /> 数据源 · 腾讯证券 / 东方财富回退</div>
       </header>
 
       <section className="workspace">
@@ -78,10 +78,9 @@ export default function Home() {
             <div><label>买入阈值</label><input type="number" min="1" max="49" value={form.buy} onChange={(e) => set("buy", e.target.value)} /></div>
             <div><label>卖出阈值</label><input type="number" min="51" max="99" value={form.sell} onChange={(e) => set("sell", e.target.value)} /></div>
           </div>
-          <label>标的范围</label>
+          <label>银行股票池 <output>{BANKS.length} 只</output></label>
           <select value={form.target} onChange={(e) => set("target", e.target.value)}>
-            <option value="all">全部 A 股上市银行</option>
-            <option value="state">六大国有银行</option>
+            {BANKS.map(([code,name])=><option key={code} value={code}>{code} · {name}</option>)}
           </select>
           <div className="costs">
             <span>单边佣金 <b>{form.fee}%</b></span>
@@ -97,7 +96,7 @@ export default function Home() {
             <div className="empty">
               <div className="orbit"><span>RSI</span></div>
               <h2>参数就绪，等待首次回测</h2>
-              <p>点击左侧「运行回测」，系统将获取全部银行股的真实历史行情。</p>
+              <p>从左侧 42 只银行股中选择标的，然后运行真实历史行情回测。</p>
             </div>
           )}
           {loading && <div className="empty"><div className="loader" /><h2>正在穿越历史行情</h2><p>全市场计算通常需要十几秒，请稍候。</p></div>}
@@ -105,8 +104,8 @@ export default function Home() {
           {data && !loading && (
             <>
               <div className="summary-head">
-                <div><p className="eyebrow">组合概览</p><h2>{data.meta.stockCount} 家银行 · 等权组合</h2></div>
-                <p>{data.meta.start} — {data.meta.end}<br />更新于 {data.meta.generatedAt}</p>
+                <div><p className="eyebrow">单股回测概览</p><h2>{data.meta.stockName} · {data.meta.stockCode}</h2></div>
+                <p>数据源：{data.meta.dataSource}<br />{data.meta.start} — {data.meta.end}<br />更新于 {data.meta.generatedAt}</p>
               </div>
               <div className="metrics">
                 <Metric label="累计收益" value={pct(data.portfolio.totalReturn)} tone={data.portfolio.totalReturn >= 0 ? "up" : "down"} />
@@ -116,7 +115,7 @@ export default function Home() {
                 <Metric label="完成交易" value={`${data.portfolio.trades} 笔`} />
               </div>
               <div className="chart">
-                <div className="chart-title"><h3>组合净值曲线</h3><span>起始净值 = 1.00</span></div>
+                <div className="chart-title"><h3>{data.meta.stockName} 净值曲线</h3><span>起始净值 = 1.00</span></div>
                 <ResponsiveContainer width="100%" height={310}>
                   <AreaChart data={data.equity}>
                     <defs><linearGradient id="fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#b52f2a" stopOpacity=".25"/><stop offset="1" stopColor="#b52f2a" stopOpacity="0"/></linearGradient></defs>
@@ -154,7 +153,7 @@ export default function Home() {
           )}
         </article>
       </section>
-      <footer><span>仅供策略研究，不构成投资建议</span><span>周线 RSI · 后复权总回报口径近似 · 含交易成本</span></footer>
+      <footer><span>仅供策略研究，不构成投资建议</span><span>单股周线 RSI · 后复权总回报口径近似 · 含交易成本</span></footer>
     </main>
   );
 }
