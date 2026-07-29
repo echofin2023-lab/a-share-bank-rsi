@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "vite build && node scripts/prepare-dist.mjs",
+    "build": "vite build --base=./ && node scripts/prepare-dist.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
