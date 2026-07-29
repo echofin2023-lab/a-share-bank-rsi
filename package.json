@@ -3,15 +3,16 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
-    "next": "15.4.6",
     "react": "19.1.1",
     "react-dom": "19.1.1",
     "recharts": "3.1.2"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "vite": "7.1.3"
+  }
 }

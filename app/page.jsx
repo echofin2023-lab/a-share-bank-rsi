@@ -1,10 +1,10 @@
-"use client";
-
+import React from "react";
 import { useMemo, useState } from "react";
 import {
   Area, AreaChart, CartesianGrid, Legend, Line, ResponsiveContainer,
   Tooltip, XAxis, YAxis
 } from "recharts";
+import { runBankBacktest } from "../lib/client-backtest";
 
 const money = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 });
 const pct = (v) => `${v >= 0 ? "+" : ""}${Number(v).toFixed(2)}%`;
@@ -33,10 +33,7 @@ export default function Home() {
   async function run() {
     setLoading(true); setError("");
     try {
-      const qs = new URLSearchParams(form).toString();
-      const res = await fetch(`/api/backtest?${qs}`);
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error || "回测失败");
+      const body = await runBankBacktest(form);
       setData(body);
     } catch (e) {
       setError(e.message);
