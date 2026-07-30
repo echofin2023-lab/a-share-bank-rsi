@@ -168,7 +168,7 @@ export default function Home() {
                 </ResponsiveContainer>
               </div>
               <div className="chart rsi-chart">
-                <div className="chart-title"><h3>{data.meta.timeframeLabel}多周期 RSI</h3><span>{data.rsiPeriods.map((p)=>`RSI(${p})`).join(" · ")} · 第一条驱动交易</span></div>
+                <div className="chart-title"><h3>{data.meta.timeframeLabel}多周期 RSI</h3><span>{data.rsiPeriods.map((p)=>`RSI(${p})`).join(" · ")} · 圆点为收盘信号，下一根K线开盘成交</span></div>
                 <ResponsiveContainer width="100%" height={245}>
                   <ComposedChart data={data.indicators}>
                     <CartesianGrid stroke="#e6e0d5" vertical={false} />
@@ -181,6 +181,10 @@ export default function Home() {
                     <Line name={`RSI(${data.rsiPeriods[0]}) · 交易线`} type="monotone" dataKey="rsi1" stroke="#c9342f" dot={false} strokeWidth={1.8} connectNulls />
                     <Line name={`RSI(${data.rsiPeriods[1]})`} type="monotone" dataKey="rsi2" stroke="#d49a2a" dot={false} strokeWidth={1.4} connectNulls />
                     <Line name={`RSI(${data.rsiPeriods[2]})`} type="monotone" dataKey="rsi3" stroke="#244d6a" dot={false} strokeWidth={1.4} connectNulls />
+                    <Line name="买入信号" dataKey="buySignal" stroke="none" connectNulls={false}
+                      dot={{r:6,fill:"#c9342f",stroke:"#fff",strokeWidth:2}} activeDot={{r:7}} />
+                    <Line name="卖出信号" dataKey="sellSignal" stroke="none" connectNulls={false}
+                      dot={{r:6,fill:"#23825d",stroke:"#fff",strokeWidth:2}} activeDot={{r:7}} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
