@@ -1,13 +1,14 @@
 import React from "react";
 import { useMemo, useState } from "react";
 import {
-  Area, AreaChart, CartesianGrid, Legend, Line, ResponsiveContainer,
-  Tooltip, XAxis, YAxis
+  Area, CartesianGrid, ComposedChart, Legend, Line, ReferenceLine,
+  ResponsiveContainer, Tooltip, XAxis, YAxis
 } from "recharts";
 import { BANKS, runBankBacktest } from "../lib/client-backtest";
 
 const money = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 });
 const pct = (v) => `${v >= 0 ? "+" : ""}${Number(v).toFixed(2)}%`;
+const cny = (v) => `${Number(v) >= 0 ? "+" : "-"}¥${money.format(Math.abs(Number(v)))}`;
 
 function Metric({ label, value, tone }) {
   return (
@@ -22,7 +23,7 @@ export default function Home() {
   const [form, setForm] = useState({
     start: "2015-01-01", end: new Date().toISOString().slice(0, 10),
     period: 14, buy: 30, sell: 70, fee: 0.03, tax: 0.05, slippage: 0.05,
-    target: "600036"
+    target: "600036", principal: 100000
   });
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -82,6 +83,9 @@ export default function Home() {
           <select value={form.target} onChange={(e) => set("target", e.target.value)}>
             {BANKS.map(([code,name])=><option key={code} value={code}>{code} · {name}</option>)}
           </select>
+          <label>回测本金 <output>人民币</output></label>
+          <input type="number" min="1000" max="1000000000" step="10000"
+            value={form.principal} onChange={(e) => set("principal", e.target.value)} />
           <div className="costs">
             <span>单边佣金 <b>{form.fee}%</b></span>
             <span>卖出印花税 <b>{form.tax}%</b></span>
@@ -113,11 +117,12 @@ export default function Home() {
                 <Metric label="最大回撤" value={pct(data.portfolio.maxDrawdown)} tone="down" />
                 <Metric label="夏普比率" value={data.portfolio.sharpe.toFixed(2)} />
                 <Metric label="完成交易" value={`${data.portfolio.trades} 笔`} />
+                <Metric label="策略盈亏" value={cny(data.portfolio.profitAmount)} tone={data.portfolio.profitAmount >= 0 ? "up" : "down"} />
               </div>
               <div className="chart">
                 <div className="chart-title"><h3>{data.meta.stockName} 净值曲线</h3><span>起始净值 = 1.00</span></div>
                 <ResponsiveContainer width="100%" height={310}>
-                  <AreaChart data={data.equity}>
+                  <ComposedChart data={data.equity}>
                     <defs><linearGradient id="fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#b52f2a" stopOpacity=".25"/><stop offset="1" stopColor="#b52f2a" stopOpacity="0"/></linearGradient></defs>
                     <CartesianGrid stroke="#e6e0d5" vertical={false} />
                     <XAxis dataKey="date" tick={{fontSize: 11}} minTickGap={45} />
@@ -126,7 +131,28 @@ export default function Home() {
                     <Legend />
                     <Area name="RSI 策略" type="monotone" dataKey="strategy" stroke="#b52f2a" fill="url(#fill)" strokeWidth={2} />
                     <Line name="买入并持有" type="monotone" dataKey="benchmark" stroke="#1d3141" dot={false} strokeWidth={1.5} />
-                  </AreaChart>
+                    <Line name="买入点" dataKey="buyMarker" stroke="none" connectNulls={false}
+                      dot={{r:5,fill:"#c9342f",stroke:"#fff",strokeWidth:1}} activeDot={false} />
+                    <Line name="卖出点" dataKey="sellMarker" stroke="none" connectNulls={false}
+                      dot={{r:5,fill:"#23825d",stroke:"#fff",strokeWidth:1}} activeDot={false} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="chart rsi-chart">
+                <div className="chart-title"><h3>多周期 RSI 指标</h3><span>RSI(6) · RSI(12) · RSI(24)</span></div>
+                <ResponsiveContainer width="100%" height={245}>
+                  <ComposedChart data={data.indicators}>
+                    <CartesianGrid stroke="#e6e0d5" vertical={false} />
+                    <XAxis dataKey="date" tick={{fontSize:11}} minTickGap={45} />
+                    <YAxis domain={[0,100]} ticks={[0,20,30,50,70,80,100]} tick={{fontSize:11}} />
+                    <Tooltip formatter={(v,name)=>[Number(v).toFixed(2),name]} />
+                    <Legend />
+                    <ReferenceLine y={data.buyThreshold} stroke="#c9342f" strokeDasharray="4 4" label={{value:`买入 ${data.buyThreshold}`,fontSize:10,fill:"#c9342f"}} />
+                    <ReferenceLine y={data.sellThreshold} stroke="#23825d" strokeDasharray="4 4" label={{value:`卖出 ${data.sellThreshold}`,fontSize:10,fill:"#23825d"}} />
+                    <Line name="RSI(6)" type="monotone" dataKey="rsi6" stroke="#c9342f" dot={false} strokeWidth={1.5} connectNulls />
+                    <Line name="RSI(12)" type="monotone" dataKey="rsi12" stroke="#d49a2a" dot={false} strokeWidth={1.5} connectNulls />
+                    <Line name="RSI(24)" type="monotone" dataKey="rsi24" stroke="#244d6a" dot={false} strokeWidth={1.5} connectNulls />
+                  </ComposedChart>
                 </ResponsiveContainer>
               </div>
               <div className="table-head"><div><h3>个股表现</h3><p>点击表头排序</p></div><span>{rows.length} 个有效样本</span></div>
@@ -146,6 +172,29 @@ export default function Home() {
                     <td>{pct(r.annualReturn)}</td><td className="down">{pct(r.maxDrawdown)}</td>
                     <td>{r.sharpe.toFixed(2)}</td><td>{r.trades}</td>
                   </tr>)}</tbody>
+                </table>
+              </div>
+              <div className="table-head trade-head">
+                <div><h3>买卖记录与单笔盈亏</h3><p>本金 ¥{money.format(data.principal)} · 含佣金、印花税与滑点</p></div>
+                <span>期末资金 ¥{money.format(data.portfolio.endingCapital)}</span>
+              </div>
+              <div className="table-wrap">
+                <table className="trade-table">
+                  <thead><tr>
+                    <th>状态</th><th>买入日期 / 价格</th><th>卖出日期 / 价格</th>
+                    <th>持有天数</th><th>单笔收益</th><th>盈亏金额</th>
+                  </tr></thead>
+                  <tbody>
+                    {data.trades.length===0&&<tr><td colSpan="6" className="no-trades">回测区间内没有触发完整买卖信号</td></tr>}
+                    {data.trades.map((t,i)=><tr key={`${t.buyDate}-${i}`}>
+                      <td><span className={`trade-status ${t.status}`}>{t.status==="open"?"持仓中":"已平仓"}</span></td>
+                      <td><b>{t.buyDate}</b><small>¥{money.format(t.buyPrice)}</small></td>
+                      <td><b>{t.sellDate||t.currentDate}</b><small>{t.status==="open"?"现价":"¥"}{t.status==="open"?" ¥":""}{money.format(t.sellPrice||t.currentPrice)}</small></td>
+                      <td>{t.holdingDays} 天</td>
+                      <td className={t.returnPct>=0?"up":"down"}>{pct(t.returnPct)}</td>
+                      <td className={t.profit>=0?"up":"down"}>{cny(t.profit)}</td>
+                    </tr>)}
+                  </tbody>
                 </table>
               </div>
               {data.warnings?.length > 0 && <p className="warning">未纳入：{data.warnings.join("、")}</p>}
