@@ -4,7 +4,7 @@ import {
   Area, Bar, CartesianGrid, ComposedChart, Legend, Line, ReferenceLine,
   ResponsiveContainer, Tooltip, XAxis, YAxis
 } from "recharts";
-import { BANKS, runBankBacktest } from "../lib/client-backtest";
+import { CATEGORIES, DIVIDEND_COUNT, STOCKS, runBankBacktest } from "../lib/client-backtest";
 
 const money = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 });
 const pct = (v) => `${v >= 0 ? "+" : ""}${Number(v).toFixed(2)}%`;
@@ -45,6 +45,7 @@ export default function Home() {
     buy: 30, sell: 70, fee: 0.03, tax: 0.05, slippage: 0.05,
     target: "600036", principal: 100000
   });
+  const [category, setCategory] = useState("银行");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -72,13 +73,19 @@ export default function Home() {
   function sortBy(key) {
     setSort((s) => ({ key, dir: s.key === key ? -s.dir : -1 }));
   }
+  const visibleStocks=useMemo(()=>category==="全部"?STOCKS:STOCKS.filter((x)=>x[2]===category),[category]);
+  function changeCategory(value){
+    setCategory(value);
+    const next=value==="全部"?STOCKS:STOCKS.filter((x)=>x[2]===value);
+    if(!next.some(([code])=>code===form.target)&&next.length)set("target",next[0][0]);
+  }
 
   return (
     <main>
       <header>
         <div>
           <p className="eyebrow">BANK FACTOR LAB / 银行因子实验室</p>
-          <h1>A股银行 <em>RSI</em> 回测台</h1>
+          <h1>A股红利 <em>RSI</em> 回测台</h1>
           <p className="lede">切换日、周、月 K 线，用一致的 RSI 信号复核每一次买卖。</p>
         </div>
         <div className="status"><i /> 数据源 · 腾讯证券 / 东方财富回退</div>
@@ -108,9 +115,13 @@ export default function Home() {
             <div><label>买入阈值</label><input type="number" min="1" max="49" value={form.buy} onChange={(e) => set("buy", e.target.value)} /></div>
             <div><label>卖出阈值</label><input type="number" min="51" max="99" value={form.sell} onChange={(e) => set("sell", e.target.value)} /></div>
           </div>
-          <label>银行股票池 <output>{BANKS.length} 只</output></label>
+          <label>股票池分类 <output>{visibleStocks.length} 只</output></label>
+          <select value={category} onChange={(e)=>changeCategory(e.target.value)}>
+            {CATEGORIES.map((name)=><option key={name} value={name}>{name}</option>)}
+          </select>
+          <label>回测标的 <output>中证红利沪深 {DIVIDEND_COUNT} 只 + 全部银行股</output></label>
           <select value={form.target} onChange={(e) => set("target", e.target.value)}>
-            {BANKS.map(([code,name])=><option key={code} value={code}>{code} · {name}</option>)}
+            {visibleStocks.map(([code,name,industry])=><option key={code} value={code}>{code} · {name} · {industry}</option>)}
           </select>
           <label>回测本金 <output>人民币</output></label>
           <input type="number" min="1000" max="1000000000" step="10000"
@@ -129,7 +140,7 @@ export default function Home() {
             <div className="empty">
               <div className="orbit"><span>RSI</span></div>
               <h2>参数就绪，等待首次回测</h2>
-              <p>从左侧 42 只银行股中选择标的，然后运行真实历史行情回测。</p>
+              <p>从银行与中证红利成分股中按行业选择标的，然后运行真实历史行情回测。</p>
             </div>
           )}
           {loading && <div className="empty"><div className="loader" /><h2>正在穿越历史行情</h2><p>全市场计算通常需要十几秒，请稍候。</p></div>}
@@ -137,7 +148,7 @@ export default function Home() {
           {data && !loading && (
             <>
               <div className="summary-head">
-                <div><p className="eyebrow">单股回测概览</p><h2>{data.meta.stockName} · {data.meta.stockCode}</h2></div>
+                <div><p className="eyebrow">单股回测概览 · {data.meta.category}</p><h2>{data.meta.stockName} · {data.meta.stockCode}</h2></div>
                 <p>数据源：{data.meta.dataSource}<br />{data.meta.start} — {data.meta.end}<br />更新于 {data.meta.generatedAt}</p>
               </div>
               <div className="metrics">
