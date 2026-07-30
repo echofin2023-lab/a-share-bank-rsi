@@ -1,7 +1,7 @@
 import React from "react";
 import { useMemo, useState } from "react";
 import {
-  Area, CartesianGrid, ComposedChart, Legend, Line, ReferenceLine,
+  Area, Bar, CartesianGrid, ComposedChart, Legend, Line, ReferenceLine,
   ResponsiveContainer, Tooltip, XAxis, YAxis
 } from "recharts";
 import { BANKS, runBankBacktest } from "../lib/client-backtest";
@@ -19,10 +19,30 @@ function Metric({ label, value, tone }) {
   );
 }
 
+function Candle({ x, y, width, height, payload }) {
+  if (!payload || !Number.isFinite(y) || !Number.isFinite(height)) return null;
+  const span = Math.max(payload.high - payload.low, Number.EPSILON);
+  const priceY = (price) => y + ((payload.high - price) / span) * height;
+  const openY = priceY(payload.open);
+  const closeY = priceY(payload.close);
+  const rising = payload.close >= payload.open;
+  const color = rising ? "#c9342f" : "#23825d";
+  const bodyY = Math.min(openY, closeY);
+  const bodyHeight = Math.max(1, Math.abs(closeY - openY));
+  const candleWidth = Math.max(1, Math.min(width * .7, 9));
+  const center = x + width / 2;
+  return <g>
+    <line x1={center} x2={center} y1={y} y2={y + height} stroke={color} strokeWidth="1" />
+    <rect x={center-candleWidth/2} y={bodyY} width={candleWidth} height={bodyHeight}
+      fill={rising ? "#fff7f5" : color} stroke={color} strokeWidth="1" />
+  </g>;
+}
+
 export default function Home() {
   const [form, setForm] = useState({
     start: "2015-01-01", end: new Date().toISOString().slice(0, 10),
-    period: 14, buy: 30, sell: 70, fee: 0.03, tax: 0.05, slippage: 0.05,
+    timeframe: "week", rsi1: 6, rsi2: 12, rsi3: 24,
+    buy: 30, sell: 70, fee: 0.03, tax: 0.05, slippage: 0.05,
     target: "600036", principal: 100000
   });
   const [data, setData] = useState(null);
@@ -59,7 +79,7 @@ export default function Home() {
         <div>
           <p className="eyebrow">BANK FACTOR LAB / 银行因子实验室</p>
           <h1>A股银行 <em>RSI</em> 回测台</h1>
-          <p className="lede">用周线观察极端情绪，把每一次买卖写进可复核的账本。</p>
+          <p className="lede">切换日、周、月 K 线，用一致的 RSI 信号复核每一次买卖。</p>
         </div>
         <div className="status"><i /> 数据源 · 腾讯证券 / 东方财富回退</div>
       </header>
@@ -73,8 +93,17 @@ export default function Home() {
             <b>→</b>
             <input type="date" value={form.end} onChange={(e) => set("end", e.target.value)} />
           </div>
-          <label>RSI 周期 <output>{form.period} 周</output></label>
-          <input type="range" min="3" max="30" value={form.period} onChange={(e) => set("period", e.target.value)} />
+          <label>行情周期 <output>{form.timeframe==="day"?"日线":form.timeframe==="month"?"月线":"周线"}</output></label>
+          <div className="period-tabs">
+            {[["day","日"],["week","周"],["month","月"]].map(([value,label])=>
+              <button type="button" className={form.timeframe===value?"active":""} key={value}
+                onClick={()=>set("timeframe",value)}>{label}K</button>)}
+          </div>
+          <label>RSI 参数 <output>第一条用于交易</output></label>
+          <div className="triple fields">
+            {[1,2,3].map((n)=><div key={n}><small>RSI {n}</small><input type="number" min="2" max="60"
+              value={form[`rsi${n}`]} onChange={(e)=>set(`rsi${n}`,e.target.value)} /></div>)}
+          </div>
           <div className="pair fields">
             <div><label>买入阈值</label><input type="number" min="1" max="49" value={form.buy} onChange={(e) => set("buy", e.target.value)} /></div>
             <div><label>卖出阈值</label><input type="number" min="51" max="99" value={form.sell} onChange={(e) => set("sell", e.target.value)} /></div>
@@ -92,7 +121,7 @@ export default function Home() {
             <span>单边滑点 <b>{form.slippage}%</b></span>
           </div>
           <button onClick={run} disabled={loading}>{loading ? "正在获取行情并计算…" : "运行回测"} <span>↗</span></button>
-          <p className="hint">信号按周五收盘确认，并在下一周首个交易日执行，避免未来函数。</p>
+          <p className="hint">第一条 RSI 默认 RSI(6)。空仓且 RSI＜买入值时产生信号，下一根 K 线开盘买入；持仓期间只等待 RSI＞卖出值，再于下一根 K 线开盘卖出。</p>
         </aside>
 
         <article>
@@ -120,6 +149,42 @@ export default function Home() {
                 <Metric label="策略盈亏" value={cny(data.portfolio.profitAmount)} tone={data.portfolio.profitAmount >= 0 ? "up" : "down"} />
               </div>
               <div className="chart">
+                <div className="chart-title"><h3>{data.meta.stockName} · {data.meta.timeframeLabel} K线</h3><span>红涨绿跌 · 后复权价格 · ▲买入 / ▼卖出</span></div>
+                <ResponsiveContainer width="100%" height={340}>
+                  <ComposedChart data={data.kline} barCategoryGap="5%">
+                    <CartesianGrid stroke="#e6e0d5" vertical={false} />
+                    <XAxis dataKey="date" tick={{fontSize:11}} minTickGap={45} />
+                    <YAxis tick={{fontSize:11}} domain={["dataMin","dataMax"]} width={58} />
+                    <Tooltip content={({active,payload,label})=>{
+                      const p=payload?.[0]?.payload;
+                      return active&&p?<div className="k-tooltip"><b>{label}</b><span>开 {p.open.toFixed(2)}</span><span>高 {p.high.toFixed(2)}</span><span>低 {p.low.toFixed(2)}</span><span>收 {p.close.toFixed(2)}</span></div>:null;
+                    }} />
+                    <Bar dataKey="range" shape={<Candle />} isAnimationActive={false} />
+                    <Line name="买入" dataKey="buyPrice" stroke="none" connectNulls={false}
+                      dot={{r:5,fill:"#c9342f",stroke:"#fff",strokeWidth:1}} activeDot={false} />
+                    <Line name="卖出" dataKey="sellPrice" stroke="none" connectNulls={false}
+                      dot={{r:5,fill:"#23825d",stroke:"#fff",strokeWidth:1}} activeDot={false} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="chart rsi-chart">
+                <div className="chart-title"><h3>{data.meta.timeframeLabel}多周期 RSI</h3><span>{data.rsiPeriods.map((p)=>`RSI(${p})`).join(" · ")} · 第一条驱动交易</span></div>
+                <ResponsiveContainer width="100%" height={245}>
+                  <ComposedChart data={data.indicators}>
+                    <CartesianGrid stroke="#e6e0d5" vertical={false} />
+                    <XAxis dataKey="date" tick={{fontSize:11}} minTickGap={45} />
+                    <YAxis domain={[0,100]} ticks={[0,20,30,50,70,80,100]} tick={{fontSize:11}} />
+                    <Tooltip formatter={(v,name)=>[Number(v).toFixed(2),name]} />
+                    <Legend />
+                    <ReferenceLine y={data.buyThreshold} stroke="#c9342f" strokeDasharray="4 4" label={{value:`买入 ${data.buyThreshold}`,fontSize:10,fill:"#c9342f"}} />
+                    <ReferenceLine y={data.sellThreshold} stroke="#23825d" strokeDasharray="4 4" label={{value:`卖出 ${data.sellThreshold}`,fontSize:10,fill:"#23825d"}} />
+                    <Line name={`RSI(${data.rsiPeriods[0]}) · 交易线`} type="monotone" dataKey="rsi1" stroke="#c9342f" dot={false} strokeWidth={1.8} connectNulls />
+                    <Line name={`RSI(${data.rsiPeriods[1]})`} type="monotone" dataKey="rsi2" stroke="#d49a2a" dot={false} strokeWidth={1.4} connectNulls />
+                    <Line name={`RSI(${data.rsiPeriods[2]})`} type="monotone" dataKey="rsi3" stroke="#244d6a" dot={false} strokeWidth={1.4} connectNulls />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="chart">
                 <div className="chart-title"><h3>{data.meta.stockName} 净值曲线</h3><span>起始净值 = 1.00</span></div>
                 <ResponsiveContainer width="100%" height={310}>
                   <ComposedChart data={data.equity}>
@@ -135,23 +200,6 @@ export default function Home() {
                       dot={{r:5,fill:"#c9342f",stroke:"#fff",strokeWidth:1}} activeDot={false} />
                     <Line name="卖出点" dataKey="sellMarker" stroke="none" connectNulls={false}
                       dot={{r:5,fill:"#23825d",stroke:"#fff",strokeWidth:1}} activeDot={false} />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="chart rsi-chart">
-                <div className="chart-title"><h3>多周期 RSI 指标</h3><span>RSI(6) · RSI(12) · RSI(24)</span></div>
-                <ResponsiveContainer width="100%" height={245}>
-                  <ComposedChart data={data.indicators}>
-                    <CartesianGrid stroke="#e6e0d5" vertical={false} />
-                    <XAxis dataKey="date" tick={{fontSize:11}} minTickGap={45} />
-                    <YAxis domain={[0,100]} ticks={[0,20,30,50,70,80,100]} tick={{fontSize:11}} />
-                    <Tooltip formatter={(v,name)=>[Number(v).toFixed(2),name]} />
-                    <Legend />
-                    <ReferenceLine y={data.buyThreshold} stroke="#c9342f" strokeDasharray="4 4" label={{value:`买入 ${data.buyThreshold}`,fontSize:10,fill:"#c9342f"}} />
-                    <ReferenceLine y={data.sellThreshold} stroke="#23825d" strokeDasharray="4 4" label={{value:`卖出 ${data.sellThreshold}`,fontSize:10,fill:"#23825d"}} />
-                    <Line name="RSI(6)" type="monotone" dataKey="rsi6" stroke="#c9342f" dot={false} strokeWidth={1.5} connectNulls />
-                    <Line name="RSI(12)" type="monotone" dataKey="rsi12" stroke="#d49a2a" dot={false} strokeWidth={1.5} connectNulls />
-                    <Line name="RSI(24)" type="monotone" dataKey="rsi24" stroke="#244d6a" dot={false} strokeWidth={1.5} connectNulls />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
@@ -202,7 +250,7 @@ export default function Home() {
           )}
         </article>
       </section>
-      <footer><span>仅供策略研究，不构成投资建议</span><span>单股周线 RSI · 后复权总回报口径近似 · 含交易成本</span></footer>
+      <footer><span>仅供策略研究，不构成投资建议</span><span>单股日 / 周 / 月 RSI · 后复权总回报口径近似 · 含交易成本</span></footer>
     </main>
   );
 }
